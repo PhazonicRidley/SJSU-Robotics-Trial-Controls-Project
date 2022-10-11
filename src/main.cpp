@@ -47,6 +47,10 @@ void setup() {
   Wire.beginTransmission(MPU);
   Wire.write(0x6B);
   Wire.write(0); // wake sensor from sleep mode
+  Wire.endTransmission(false);
+  Wire.beginTransmission(MPU);
+  Wire.write(0x1C);
+  Wire.write(1);
   Wire.endTransmission(true);
 }
 
@@ -76,14 +80,14 @@ void loop() {
 
   if (!running)
     return;
-
-  Wire.beginTransmission(MPU);
-  Wire.write(0x3B);
-  Wire.write(0x1C); // set a range of +- 4g for acceleration measurement
-  Wire.write(1);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU, 4, true); // fetch raw data from i2c registers
-  
+  do 
+  {
+    Wire.beginTransmission(MPU);
+    Wire.write(0x3B);
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPU, 4, true); // fetch raw data from i2c registers
+  }
+  while (Wire.available() == 0);
   raw_acc_x = Wire.read() << 8 | Wire.read(); // get x value from two registers
   raw_acc_y = Wire.read() << 8 | Wire.read(); // get y values from two registers
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
@@ -92,6 +96,7 @@ void loop() {
   Serial.print(acc_x);
   Serial.print(" Y = ");
   Serial.println(acc_y);
+  //Serial.println(" Z = " + String(acc_z));
 
   /**
    * set needle using accelerometer data
@@ -100,14 +105,16 @@ void loop() {
    */
 
   // calculate offset angle
-  double positional_angle = rad_to_deg(atan2(acc_y, acc_x));
+  double positional_angle = rad_to_deg(atan(acc_y/acc_x));
+  Serial.println("\nPositional Offset: " + String(positional_angle) + " Degrees");
   // how far away from 90 degrees are we?
-  //serv_value += offset_angle;
-  //double angle = positive_modulo(offset_angle, 180);
-  my_servo.write(round(positional_angle));
-  Serial.print("\nAngle difference angle: ");
-  Serial.println(90 - positional_angle);
-  Serial.println("\nPositional angle: " + String(positional_angle));
+  auto new_serv_val = serv_value + round(positional_angle);
+  if (new_serv_val <= 180 && new_serv_val >= 0)
+    my_servo.write(new_serv_val);
+  Serial.println("\nNew position: " + String(new_serv_val) + " Degrees");
+  // Serial.print("\nAngle difference angle: ");
+  // Serial.println(90 - positional_angle);
+  //Serial.println("\nOffset angle: " + String(positional_angle));
   // TODO: try with rotation and gyroscope
   //delay(10);
 
