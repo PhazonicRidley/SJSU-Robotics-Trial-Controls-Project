@@ -1,39 +1,14 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
-const int MPU =  0x68;
+#define MPU 0x68
 
 Servo my_servo;
-double starting_value = 90;
-double servo_value = starting_value;
-double raw_value;
+double initial_position = 90; // initial value
+double servo_value = initial_position;
 const double LBS_to_g_constant = 8192; // using mode 1 for +-4gs for acceleration
-const double LSB_to_deg_constant = 131;
+const double LSB_to_deg_constant = 131; // using mode 0 for +- 250 deg/sec for gyroscope
 bool running = false;
-
-double positive_modulo(int number, int divisor)
-{
-  return (number % divisor + divisor) % divisor;
-}
-
-void serial_test_loop()
-{
-  Serial.print("Servo is at ");
-  Serial.println(starting_value);
-  if (Serial.available() > 0)
-  {
-    raw_value = Serial.readString().toInt();
-    Serial.print("Got: ");
-    Serial.println(raw_value);
-    if (raw_value != 180)
-      starting_value = positive_modulo((int)raw_value, 180);
-    else
-    starting_value = raw_value;
-    //serv_value = map(raw_value, 0, 1023, 0, 180);
-    my_servo.write(starting_value);
-    delay(15);
-  }
-}
 
 double rad_to_deg(double rad)
 {
@@ -42,17 +17,22 @@ double rad_to_deg(double rad)
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600);
+  Serial.begin(9600); // configure Serial communication
+  // configure servo
   my_servo.attach(3);
-  my_servo.write(90);  // let 90 degrees be "up" for the servo
-  Wire.begin(); // TODO: refactor
+  my_servo.write(initial_position); 
+
+  // Configure i2c bus and configure GY 521 
+  Wire.begin(); 
+  // wake sensor from sleep mode
   Wire.beginTransmission(MPU);
   Wire.write(0x6B);
-  Wire.write(0); // wake sensor from sleep mode
+  Wire.write(0); 
   Wire.endTransmission(false);
+  // Set the scale of the accelerometer to be +- 4g 
   Wire.beginTransmission(MPU);
   Wire.write(0x1C);
-  Wire.write(1);
+  Wire.write(1); 
   Wire.endTransmission(true);
 }
 
@@ -66,13 +46,12 @@ void loop() {
     cmd = Serial.readString();
     Serial.println(cmd);
   }
-  //Serial.println(running);
   if (cmd == String("stop\n"))
   {
     Serial.println("Stopped");
     running = false;
     my_servo.write(90);
-    starting_value = 90;
+    initial_position = 90;
   }
   else if (cmd == String("run\n"))
   {
@@ -80,27 +59,33 @@ void loop() {
     running = true;
   }
 
-  
+  if (!running)
+    return;
+
+  // retrieve accelerometer data
   do 
   {
     Wire.beginTransmission(MPU);
     Wire.write(0x3B);
     Wire.endTransmission(false);
-    Wire.requestFrom(MPU, 4, true); // fetch raw data from i2c registers
+    Wire.requestFrom(MPU, 4, true); // read 4 bytes of data for x and y
   }
   while (Wire.available() == 0);
   raw_acc_x = Wire.read() << 8 | Wire.read(); // get x value from two registers
   raw_acc_y = Wire.read() << 8 | Wire.read(); // get y values from two registers
+
+  // retrieve gyroscope data
   do
   {
     Wire.beginTransmission(MPU);
     Wire.write(0x43);
     Wire.endTransmission(false);
-    Wire.requestFrom(MPU, 2, true);
+    Wire.requestFrom(MPU, 2, true); // read 2 bytes for just x
   } while (Wire.available() == 0);
-  raw_gy_x = Wire.read() << 8 | Wire.read();
+
+  raw_gy_x = Wire.read() << 8 | Wire.read(); // parse data
   
-  // calculate acceleration in x and y directions in gs
+  // calculate acceleration in x and y directions in g
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
   acc_y = (double)raw_acc_y / LBS_to_g_constant;  
   Serial.print("Accelerometer: X = " + String(acc_x));
@@ -109,22 +94,14 @@ void loop() {
   // calculate angular velocity in x and y directions in degrees/sec
   gy_x = (double)raw_gy_x / LSB_to_deg_constant;
   Serial.println("Gyroscope: X = " + String(gy_x));
-  if (!running)
-    return;
 
-  /**
-   * set needle using accelerometer data
-   * Since 90 degrees is our "up", to stay up we add or subtract the calculated offset using
-   * the accelerometer data.
-   */
 
-  // calculate offset angle
+  // calculate positional angle with respect to the x and y vectors of acceleration
   double positional_angle = rad_to_deg(atan(acc_y/acc_x));
-  Serial.println("Positional Offset: " + String(positional_angle) + " Degrees");
-  // how far away from 90 degrees are we?
-  auto new_serv_val = starting_value + round(positional_angle);
-  // checks to make sure the new servo value isn't wrapping around. wont move servo if degree change is greater than 25, 
-  // TODO: probably a superior way of doing this
+  Serial.println("Offset angle: " + String(positional_angle) + " Degrees");
+  // offset needle from our starting set starting position
+  auto new_serv_val = initial_position + round(positional_angle);
+  // checks to make sure the new servo value isn't wrapping around. wont move servo if degree change is greater than 100
   if (abs(new_serv_val - servo_value) < 100) 
   {
     my_servo.write(new_serv_val);
