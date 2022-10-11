@@ -4,9 +4,11 @@
 const int MPU =  0x68;
 
 Servo my_servo;
-double serv_value = 90;
+double starting_value = 90;
+double servo_value = starting_value;
 double raw_value;
-const double LBS_to_g_constant = 8192;
+const double LBS_to_g_constant = 8192; // using mode 1 for +-4gs for acceleration
+const double LSB_to_deg_constant = 131;
 bool running = false;
 
 double positive_modulo(int number, int divisor)
@@ -17,18 +19,18 @@ double positive_modulo(int number, int divisor)
 void serial_test_loop()
 {
   Serial.print("Servo is at ");
-  Serial.println(serv_value);
+  Serial.println(starting_value);
   if (Serial.available() > 0)
   {
     raw_value = Serial.readString().toInt();
     Serial.print("Got: ");
     Serial.println(raw_value);
     if (raw_value != 180)
-      serv_value = positive_modulo((int)raw_value, 180);
+      starting_value = positive_modulo((int)raw_value, 180);
     else
-    serv_value = raw_value;
+    starting_value = raw_value;
     //serv_value = map(raw_value, 0, 1023, 0, 180);
-    my_servo.write(serv_value);
+    my_servo.write(starting_value);
     delay(15);
   }
 }
@@ -56,9 +58,9 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  int16_t raw_acc_x, raw_acc_y;
+  int16_t raw_acc_x, raw_acc_y, raw_gy_x;
   String cmd;
-  double acc_x, acc_y;
+  double acc_x, acc_y, gy_x;
   if (Serial.available() > 0)
   {
     cmd = Serial.readString();
@@ -70,7 +72,7 @@ void loop() {
     Serial.println("Stopped");
     running = false;
     my_servo.write(90);
-    serv_value = 90;
+    starting_value = 90;
   }
   else if (cmd == String("run\n"))
   {
@@ -78,8 +80,7 @@ void loop() {
     running = true;
   }
 
-  if (!running)
-    return;
+  
   do 
   {
     Wire.beginTransmission(MPU);
@@ -90,13 +91,26 @@ void loop() {
   while (Wire.available() == 0);
   raw_acc_x = Wire.read() << 8 | Wire.read(); // get x value from two registers
   raw_acc_y = Wire.read() << 8 | Wire.read(); // get y values from two registers
+  do
+  {
+    Wire.beginTransmission(MPU);
+    Wire.write(0x43);
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPU, 2, true);
+  } while (Wire.available() == 0);
+  raw_gy_x = Wire.read() << 8 | Wire.read();
+  
+  // calculate acceleration in x and y directions in gs
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
-  acc_y = (double)raw_acc_y / LBS_to_g_constant;
-  Serial.print("X = ");
-  Serial.print(acc_x);
-  Serial.print(" Y = ");
-  Serial.println(acc_y);
-  //Serial.println(" Z = " + String(acc_z));
+  acc_y = (double)raw_acc_y / LBS_to_g_constant;  
+  Serial.print("Accelerometer: X = " + String(acc_x));
+  Serial.println(" | Y = " + String(acc_y));
+
+  // calculate angular velocity in x and y directions in degrees/sec
+  gy_x = (double)raw_gy_x / LSB_to_deg_constant;
+  Serial.println("Gyroscope: X = " + String(gy_x));
+  if (!running)
+    return;
 
   /**
    * set needle using accelerometer data
@@ -106,17 +120,18 @@ void loop() {
 
   // calculate offset angle
   double positional_angle = rad_to_deg(atan(acc_y/acc_x));
-  Serial.println("\nPositional Offset: " + String(positional_angle) + " Degrees");
+  Serial.println("Positional Offset: " + String(positional_angle) + " Degrees");
   // how far away from 90 degrees are we?
-  auto new_serv_val = serv_value + round(positional_angle);
-  if (new_serv_val <= 180 && new_serv_val >= 0)
+  auto new_serv_val = starting_value + round(positional_angle);
+  // checks to make sure the new servo value isn't wrapping around. wont move servo if degree change is greater than 25, 
+  // TODO: probably a superior way of doing this
+  if (abs(new_serv_val - servo_value) < 100) 
+  {
     my_servo.write(new_serv_val);
-  Serial.println("\nNew position: " + String(new_serv_val) + " Degrees");
-  // Serial.print("\nAngle difference angle: ");
-  // Serial.println(90 - positional_angle);
-  //Serial.println("\nOffset angle: " + String(positional_angle));
-  // TODO: try with rotation and gyroscope
-  //delay(10);
+    servo_value = new_serv_val;
+  }
+  Serial.println("Position: " + String(servo_value) + " Degrees\n");
+  
 
 
 }
