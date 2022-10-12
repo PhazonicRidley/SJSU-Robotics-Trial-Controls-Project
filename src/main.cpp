@@ -94,14 +94,14 @@ void loop() {
   raw_acc_y = Wire.read() << 8 | Wire.read(); // get y values from two registers
   raw_acc_z = Wire.read() << 8 | Wire.read(); // get z values from two registers
   
-  // calculate acceleration in x and y directions in g
+  // calculate acceleration in x, y, and z directions in g
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
   acc_y = (double)raw_acc_y / LBS_to_g_constant; 
   acc_z = (double)raw_acc_z / LBS_to_g_constant; 
   Serial.print("Acceleration Force: X = " + String(acc_x) + " | Y = " + String(acc_y));
   Serial.println(" | Z = " + String(acc_z));
 
-  // calculate positional angle with respect to the x and y vectors of acceleration
+  // calculate positional angle with respect to the x, y, and z vectors of acceleration
   double positional_angle = rad_to_deg(atan(acc_y / acc_x));
   Serial.println("Positional correction angle: " + String(positional_angle) + " Degrees");
   Serial.println("Initial position: ('Up' is...) " + String(initial_position) + " Degrees");
