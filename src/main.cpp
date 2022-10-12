@@ -10,19 +10,20 @@ const double LBS_to_g_constant = 8192; // using mode 1 for +-4gs for acceleratio
 const double LSB_to_deg_constant = 131; // using mode 0 for +- 250 deg/sec for gyroscope
 bool running = false;
 
+// takes the positive remainder of a number given a divisor, intended to be used to "loop around" a number.
 int positive_modulo(int number, int divisor)
 {
   return (divisor + (number % divisor)) % divisor;
 }
 
+// converts radians to degrees.
 double rad_to_deg(double rad)
 {
   return rad * 180 / PI;
 }
 
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(115200); // configure Serial communication
+  Serial.begin(115200); // configure Serial communication, higher baudrate to allow the system to run better
   // configure servo
   my_servo.attach(3);
   my_servo.write(initial_position); 
@@ -41,35 +42,37 @@ void setup() {
   Wire.endTransmission(true);
 }
 
+// Used to change the starting position of the servo needle, sets where "up" is.
 void set_starting_offset(String s)
 {
   int offset = s.toInt() % 90;
   if (offset == 0)
     initial_position = 90;
   else
-    initial_position = positive_modulo(offset, 180); // convert position into an offset, left is positive numbers, right is negative ones
+    initial_position = positive_modulo(offset, 180);
 }
+
 void loop() {
-  // put your main code here, to run repeatedly:
-  int16_t raw_acc_x, raw_acc_y, raw_gy_x;
+  int16_t raw_acc_x, raw_acc_y;
   String cmd = "";
-  double acc_x, acc_y, gy_x;
+  double acc_x, acc_y;
+
+  // read inputs
   if (Serial.available() > 0)
   {
     cmd = Serial.readString();
     cmd.trim();
-    //Serial.println(cmd);
   }
   if (cmd == String("stop"))
   {
-    //Serial.println("Stopped");
+    Serial.println("Stopped");
     running = false;
     my_servo.write(90);
     initial_position = 90;
   }
   else if (cmd == String("run"))
   {
-    //Serial.println("Running");
+    Serial.println("Running");
     running = true;
   }
 
@@ -90,43 +93,24 @@ void loop() {
   while (Wire.available() == 0);
   raw_acc_x = Wire.read() << 8 | Wire.read(); // get x value from two registers
   raw_acc_y = Wire.read() << 8 | Wire.read(); // get y values from two registers
-
-  // retrieve gyroscope data
-  do
-  {
-    Wire.beginTransmission(MPU);
-    Wire.write(0x43);
-    Wire.endTransmission(false);
-    Wire.requestFrom(MPU, 2, true); // read 2 bytes for just x
-  } while (Wire.available() == 0);
-
-  raw_gy_x = Wire.read() << 8 | Wire.read(); // parse data
   
   // calculate acceleration in x and y directions in g
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
   acc_y = (double)raw_acc_y / LBS_to_g_constant;  
-  //Serial.println("Accelerometer: X = " + String(acc_x) + " | Y = " + String(acc_y));
-
-  // calculate angular velocity in x and y directions in degrees/sec
-  gy_x = (double)raw_gy_x / LSB_to_deg_constant;
-  Serial.println("Gyroscope: X = " + String(gy_x));
-
+  Serial.println("Acceleration Force: X = " + String(acc_x) + " | Y = " + String(acc_y));
 
   // calculate positional angle with respect to the x and y vectors of acceleration
-  double positional_angle = rad_to_deg(atan(acc_y/acc_x));
+  double positional_angle = rad_to_deg(atan(acc_y / acc_x));
   Serial.println("Positional correction angle: " + String(positional_angle) + " Degrees");
-  Serial.println("Initial position: " + String(initial_position) + " Degrees");
+  Serial.println("Initial position: ('Up' is...) " + String(initial_position) + " Degrees");
   // offset needle from our starting set starting position
   auto new_serv_val = initial_position + round(positional_angle);
   // checks to make sure the new servo value isn't wrapping around. wont move servo if degree change is greater than 100
-  if (abs(new_serv_val - servo_value) < 150) 
+  if (abs(new_serv_val - servo_value) < 120) 
   {
     my_servo.write(new_serv_val);
     servo_value = new_serv_val;
-  }
-  //Serial.println("Position: " + String(servo_value) + " Degrees\n");
-  
-
+  }  
 
 }
 
