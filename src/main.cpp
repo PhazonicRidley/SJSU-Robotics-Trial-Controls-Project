@@ -22,7 +22,7 @@ double rad_to_deg(double rad)
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600); // configure Serial communication
+  Serial.begin(115200); // configure Serial communication
   // configure servo
   my_servo.attach(3);
   my_servo.write(initial_position); 
@@ -105,27 +105,28 @@ void loop() {
   // calculate acceleration in x and y directions in g
   acc_x = (double)raw_acc_x / LBS_to_g_constant;
   acc_y = (double)raw_acc_y / LBS_to_g_constant;  
-  Serial.print("Accelerometer: X = " + String(acc_x));
-  Serial.println(" | Y = " + String(acc_y));
+  //Serial.println("Accelerometer: X = " + String(acc_x) + " | Y = " + String(acc_y));
 
   // calculate angular velocity in x and y directions in degrees/sec
   gy_x = (double)raw_gy_x / LSB_to_deg_constant;
-  //Serial.println("Gyroscope: X = " + String(gy_x));
+  Serial.println("Gyroscope: X = " + String(gy_x));
 
 
   // calculate positional angle with respect to the x and y vectors of acceleration
-  double positional_angle = rad_to_deg(atan(acc_y / acc_x));
+  double positional_angle = rad_to_deg(atan(acc_y/acc_x));
   Serial.println("Positional correction angle: " + String(positional_angle) + " Degrees");
   Serial.println("Initial position: " + String(initial_position) + " Degrees");
   // offset needle from our starting set starting position
   auto new_serv_val = initial_position + round(positional_angle);
   // checks to make sure the new servo value isn't wrapping around. wont move servo if degree change is greater than 100
-  if (abs(new_serv_val - servo_value) < 100) 
+  if (abs(new_serv_val - servo_value) < 150) 
   {
     my_servo.write(new_serv_val);
     servo_value = new_serv_val;
   }
-  Serial.println("Position: " + String(servo_value) + " Degrees\n");
+  //Serial.println("Position: " + String(servo_value) + " Degrees\n");
   
+
+
 }
 
