@@ -87,7 +87,7 @@ void loop() {
     Wire.beginTransmission(MPU);
     Wire.write(0x3B);
     Wire.endTransmission(false);
-    Wire.requestFrom(MPU, 6, true); // read 4 bytes of data for x and y
+    Wire.requestFrom(MPU, 6, true); // read 6 bytes of data for x, y, and z
   }
   while (Wire.available() == 0);
   raw_acc_x = Wire.read() << 8 | Wire.read(); // get x value from two registers
